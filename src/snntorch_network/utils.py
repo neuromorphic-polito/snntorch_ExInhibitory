@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
-import seaborn as sns 
+import seaborn as sns
 from sklearn.metrics import confusion_matrix, mean_squared_error
 import matplotlib.pyplot as plt
 import itertools
@@ -41,11 +41,11 @@ def calculate_kde(data):
 def calculate_kld(kde_p, kde_q, data_points, epsilon=1e-10):
     p = kde_p(data_points)
     q = kde_q(data_points)
-    
+
     # Ensure no zero values
     p = np.maximum(p, epsilon)
     q = np.maximum(q, epsilon)
-    
+
     return np.sum(p * np.log(p / q))
 
 
@@ -73,9 +73,9 @@ def calculate_separability_score(combination, distance_matrix):
     return score
 
 def calculate_distance_matrix(data, labels, num_classes, epsilon=1e-10, show_matrix=False, save_matrix_name=None):
-    
+
     kdes = {cls: [] for cls in range(num_classes)}
-    
+
     print("Calculating KDEs for each class...")
     for cls in tqdm(range(num_classes), desc="Classes"):
         if len(data[labels == cls]) == 0:
@@ -85,13 +85,13 @@ def calculate_distance_matrix(data, labels, num_classes, epsilon=1e-10, show_mat
                 kde = calculate_kde(data[labels == cls,i,:].reshape(-1))
                 kdes[cls].append(kde)
 
-    
+
     print("Generating class distance matrix using KLD...")
     distance_matrix = generate_class_distance_matrix(kdes, num_classes, epsilon)
     if save_matrix_name is not None:
         np.save(f"distance_matrix_{save_matrix_name}.npy", distance_matrix)
     if show_matrix:
-        
+
         # Generate heatmap
         plt.imshow(distance_matrix, cmap='hot', interpolation='nearest')
 
@@ -105,7 +105,7 @@ def calculate_distance_matrix(data, labels, num_classes, epsilon=1e-10, show_mat
 
         # Show the plot
         plt.show()
-    
+
     return distance_matrix
 
 def calculate_separability_scores(distance_matrix, num_classes, n):
@@ -116,13 +116,13 @@ def calculate_separability_scores(distance_matrix, num_classes, n):
     for combination in tqdm(class_combinations, desc="Combinations"):
         score = calculate_separability_score(combination, distance_matrix)
         separability_scores.append((combination, score))
-    
+
     separability_scores.sort(key=lambda x: x[1], reverse=True)
-    
+
     top_combinations = separability_scores[:10]
     for comb, score in top_combinations:
         print(f"Combination: {comb}, Score: {score}")
-    
+
     return separability_scores
 
 def distance_matrix_subset(distance_matrix, subset):
@@ -131,7 +131,7 @@ def distance_matrix_subset(distance_matrix, subset):
         for j in range(i, len(subset)):
             subset_matrix[i, j] = distance_matrix[subset[i], subset[j]]
             subset_matrix[j, i] = distance_matrix[subset[j], subset[i]]
-    
+
     plt.imshow(subset_matrix, cmap='hot', interpolation='nearest')
     plt.colorbar()
     plt.title('Distance Matrix Heatmap')
@@ -141,6 +141,12 @@ def distance_matrix_subset(distance_matrix, subset):
 
     return subset_matrix
 class regularization_loss(object):
+
+    """Target Firing Rate Loss. Read more in the thesis
+
+     We use a custom layer loss function as the L1 and L2 torch ones were
+    are forcing aa fixed target firing rate."""
+
     def __init__(self, min_hz, max_hz ,time_window, pth = 0.99, device='cuda'):
         """
         Initializes the regularization loss function.
@@ -155,7 +161,7 @@ class regularization_loss(object):
         self.min_hz = min_hz
         self.max_hz = max_hz
         self.pth = pth
-        self.time_window = time_window        
+        self.time_window = time_window
         self.device = device
     # def __call0__(self, spike_count_array: list[torch.float32]) -> torch.float32:
     #     """
@@ -181,7 +187,7 @@ class regularization_loss(object):
     #             # for z in range(spike_count_array[i].shape[1]):
 
     #             #     frequency_list.append(torch.sum(spike_count_array[i][:,z,j])/self.time_window)
-                
+
     #             frequency_list = torch.sum(spike_count_array[i][:,:,j], dim=(0)) / self.time_window
     #             #print('frequency list shape', len(frequency_list))
     #             frequency_matrix = torch.sum(spike_count_array[i], dim=(0, 2)) / self.time_window
@@ -189,12 +195,12 @@ class regularization_loss(object):
 
     #             Rpth = frequency_list[int(self.pth*len(frequency_list))]
 
-    #             layer_loss += (F.relu(Rpth - self.max_hz) + F.relu(self.min_hz - Rpth))**2 
+    #             layer_loss += (F.relu(Rpth - self.max_hz) + F.relu(self.min_hz - Rpth))**2
 
-    #         loss += layer_loss / spike_count_array[i].shape[1] 
-        
+    #         loss += layer_loss / spike_count_array[i].shape[1]
+
     #     return loss
-        
+
     def __call__(self, spike_count_array: list[torch.float32]) -> torch.float32:
         """
         Calculates the regularization loss.
@@ -205,7 +211,7 @@ class regularization_loss(object):
         Returns:
             torch.float32: The regularization loss.
         """
-        
+
         """ [time, batch, channels]"""
         loss = torch.tensor(0.0)
 
@@ -216,20 +222,20 @@ class regularization_loss(object):
             frequency_matrix = torch.sum(spike_count_array[i], dim=(0)) / self.time_window
             frequency_matrix = torch.sort(frequency_matrix, dim=-1).values
             Rpth = frequency_matrix[int(self.pth*frequency_matrix.shape[0])]
-            
-            for j in range(spike_count_array[i].shape[2]):
-        
-                layer_loss += (F.relu(Rpth[j] - self.max_hz) + F.relu(self.min_hz - Rpth[j]))**2 
 
-            loss += layer_loss / spike_count_array[i].shape[1] 
-    
+            for j in range(spike_count_array[i].shape[2]):
+
+                layer_loss += (F.relu(Rpth[j] - self.max_hz) + F.relu(self.min_hz - Rpth[j]))**2
+
+            loss += layer_loss / spike_count_array[i].shape[1]
+
         return loss.to(self.device)
-    
+
 def compute_output_labels(matrix):
     # Sum the elements along the last dimension
     #print(f'compute_output_labels matrix shape {matrix.shape}')
     summed_matrix = np.sum(matrix, axis=-1)
-     
+
     # Divide the sum by the number of elements in the second dimension
     divided_matrix = summed_matrix / matrix.shape[1]
 
@@ -240,7 +246,7 @@ def compute_output_labels(matrix):
 
 
 def gen_confusion_matrix(predictions, labels, path):
-    
+
     num_label = max(labels)
     #print(f'prediction shape {predictions.shape} and labels shape{len(labels)}')
     conf_matrix = confusion_matrix(predictions, labels)
@@ -263,13 +269,13 @@ def gen_confusion_matrix(predictions, labels, path):
 
 
 def spike_plot(data,spike_data,  label, save=None):
-    
+
 
     line_size = 0.5
     colors_spike = []
     color = []
     handles = []
-    
+
     if len(spike_data.shape) == 3:
         for i in range(spike_data.shape[0]):
             r = np.random.random()
@@ -278,7 +284,7 @@ def spike_plot(data,spike_data,  label, save=None):
             color.append([r, g, b])
             for d in range(spike_data.shape[1]):
                 colors_spike.append([r, g, b])
-        
+
         plot_data =  spike_data.reshape((spike_data.shape[0]*spike_data.shape[1], spike_data.shape[2])) * np.arange(spike_data.shape[-1]) * 1.0/spike_data.shape[-1]
 
     if len(spike_data.shape) == 2:
@@ -288,7 +294,7 @@ def spike_plot(data,spike_data,  label, save=None):
             g = np.random.random()
             color.append([r, g, b])
             colors_spike.append([r, g, b])
-            
+
         plot_data =  spike_data * np.arange(spike_data.shape[-1]) * 1.0/spike_data.shape[-1]
         print(f'plot data {plot_data.shape}')
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(40, 30))
@@ -305,7 +311,7 @@ def spike_plot(data,spike_data,  label, save=None):
     # print(f'colors spike {len(colors_spike)}')
     # print(f"plot data shape {plot_data.shape}")
 
-    ax2.eventplot(plot_data, color=colors_spike, linelengths = line_size)     
+    ax2.eventplot(plot_data, color=colors_spike, linelengths = line_size)
     ax2.set_xlabel('Spike')
     ax2.set_ylabel('Channels')
     ax2.set_title('Spike Train encoding')
@@ -380,7 +386,7 @@ def WisdmDf2Np(path,save_path, time_window=2, overlap =0, subset=0):
             frames.append(window)
 
     #activities = sorted(act_map.keys())
-    activities = act_map.keys() 
+    activities = act_map.keys()
     activity_encoding = {v: k for k, v in enumerate(activities)}
 
     X_list = []
@@ -402,7 +408,7 @@ def WisdmDf2Np(path,save_path, time_window=2, overlap =0, subset=0):
 
     else:
         X = np.array(X_list)
-        #y = np.array(to_categorical(y_list))  
+        #y = np.array(to_categorical(y_list))
         y = np.array(y_list)
         print(f'y_list {y.shape}')
         y = one_hot_encode(y, np.max(y)+1)
@@ -449,7 +455,7 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
             GROUP BY trialjobId
             ORDER BY data DESC
             LIMIT 5
-        ) 
+        )
         AND type = 'PERIODICAL'
         ORDER BY trialjobId, sequence;
     """
@@ -466,13 +472,13 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
         print('NO METRICS FOUND')
         return
     if "{" not in results[0][2]:
-        
+
         print("found single Score")
         query = """
                 UPDATE MetricData
                 SET data = replace(data, '"', '');
                 """
-        
+
         cursor.execute(query)
         connection.commit()
 
@@ -522,7 +528,7 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
                 UPDATE MetricData
                 SET data = replace(data, '}}"', '}}');
             """
-        
+
         cursor.execute(query)
         connection.commit()
         query = f"""
@@ -538,11 +544,11 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
                     GROUP BY trialjobId
                     ORDER BY MAX(CAST(JSON_EXTRACT(data, '$.default') AS REAL)) DESC
                     LIMIT 5
-                ) 
+                )
                 AND type = 'PERIODICAL'
                 ORDER BY max_data DESC, trialjobId, sequence;
             """
-        
+
         cursor.execute(query)
         results = cursor.fetchall()
 
@@ -562,10 +568,10 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
                 UPDATE MetricData
                 SET data = replace(data, '}}', '}}"');
             """
-        
+
         cursor.execute(query)
         connection.commit()
-            
+
                 # Execute the query
 
 
@@ -587,7 +593,7 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
             FROM TrialJobEvent
             WHERE event = 'WAITING'
             AND trialjobId IN ({', '.join('?' for _ in score_dict.keys())});
-            """ 
+            """
     cursor.execute(query2, list(score_dict.keys()))
     results2 = cursor.fetchall()
     connection.close()
@@ -601,23 +607,23 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
         # Append the data to the list, maintaining the order by sequence
             params_dict[trialjob_id] = (parameters['parameters'])
 
-    merged_dict = merge_dicts(score_dict, params_dict)  
-    
+    merged_dict = merge_dicts(score_dict, params_dict)
+
     if show == True:
-        
+
         values = next(iter(merged_dict.values()))
         header = [['Trials Name'] + list(values[1].keys()) + ['Score']]
         plt.figure(figsize=(15, 10))
-        
+
         for key, value in merged_dict.items():
-            
+
             plt.plot(range(len(value[0])), value[0], label=f'{key}, best:{max(value[0]):.4f}')
             rows = [key] + list(value[1].values()) + [max(value[0])]
             header.append(rows)
         plt.legend()
         plt.show()
-        
-        print(tabulate(header, headers='firstrow', tablefmt='grid'))    
+
+        print(tabulate(header, headers='firstrow', tablefmt='grid'))
 
     return merged_dict
 
@@ -630,7 +636,7 @@ def show_results(path, experiment_code=None, print_content=False):
                 dir_content = os.listdir(path)
             else:
                 dir_content = [experiment_code]
-            
+
             # Scansiona tutti gli elementi nel path
             for element in dir_content:
                 print(f'experiment codename {element}')
@@ -639,7 +645,7 @@ def show_results(path, experiment_code=None, print_content=False):
                 if os.path.isfile(db_path):
                     experimet_best_dict = nni_query(db_path, show=True)
                     if experimet_best_dict is not None and print_content == True:
-                        for trial in experimet_best_dict.keys(): 
+                        for trial in experimet_best_dict.keys():
                             loss_trial_path = os.path.join(path, element,'trials', trial, 'Trained/loss.txt')
                             data = np.loadtxt(loss_trial_path, skiprows=1)
                             plt.figure(figsize=(15, 10))
@@ -653,7 +659,7 @@ def show_results(path, experiment_code=None, print_content=False):
 
                             # Visualizza l'immagine
                             plt.imshow(img)
-                            plt.show()                        
+                            plt.show()
                             gif_path = os.path.join(path, element,'trials', trial, 'gifs')
                             if not os.path.exists(gif_path):
                                 print("The gif_path does not exist.")
@@ -678,7 +684,7 @@ def show_results(path, experiment_code=None, print_content=False):
                                             image_path2 = os.path.join(gif_path, image_name2)
                                         except:
                                             print("found error in gifs names")
-                                        
+
                                         html += '<tr>'
                                         html += f'<td><b>Label: {label}</b></td>'
                                         html += gif_td(image_path1)
@@ -688,8 +694,8 @@ def show_results(path, experiment_code=None, print_content=False):
                                     display(HTML(html))
 
                 else:
-                    print('no database file found in the experiment gfolder \n')               
-    else:           
+                    print('no database file found in the experiment gfolder \n')
+    else:
         print(f"given path is not a directory: {path}")
 
 #### given the modularity of the saving, modular finction defined by the user
@@ -719,15 +725,15 @@ def MseScore_plot(combination, distance_matrix, plot=False):
     mse = mean_squared_error(distances_distribution, uniform_distribution)
     distances_distribution = distances_distribution[distances_distribution != 0]  # Remove zeros
     uniform_distribution = np.full_like(distances_distribution, 1 / len(distances_distribution))
-    
+
     if plot:
         plt.figure(figsize=(10, 6))
         plt.plot(distances_distribution, label='Distance Distribution')
         plt.plot(uniform_distribution, label='Uniform Distribution', linestyle='--')
-        
+
         # Highlight the moving range with dotted lines
         plt.fill_between(range(len(distances_distribution)), distances_distribution, uniform_distribution, color='gray', alpha=0.2, linestyle=':')
-        
+
         # Calculate and plot the range amplitude
         range_amplitude = distances_distribution.max() - distances_distribution.min()
         plt.axhline(y=distances_distribution.max(), color='r', linestyle=':', label='Max Amplitude')
@@ -747,25 +753,25 @@ def calculate_separability_scores_v2(distance_matrix, num_classes, n):
     for combination in tqdm(class_combinations, desc="Combinations"):
         distances = distance_matrix[np.ix_(combination, combination)]
         median_distance = np.median(distances.flatten())
-        
-        # Calculate the distances distributionsdsdsfdsfsdfsdfsdfdsfdsfdsewrewrwerewr234234234234234              
+
+        # Calculate the distances distributionsdsdsfdsfsdfsdfsdfdsfdsfdsewrewrwerewr234234234234234
         distances_distribution = distances.flatten()
         distances_distribution /= np.sum(distances_distribution)  # Normalize the distribution
-        
+
         # Calculate the uniform distribution
         uniform_distribution = np.full_like(distances_distribution, 1 / len(distances_distribution))
-        
-        # Calculate the mse between the distributions 
+
+        # Calculate the mse between the distributions
         mse = mean_squared_error(distances_distribution, uniform_distribution)
         score = calculate_separability_score(combination, distance_matrix)
         separability_scores.append((combination, score, median_distance, mse))
-    
+
     separability_scores.sort(key=lambda x: x[1], reverse=True)
-    
+
     top_combinations = separability_scores[:10]
     for comb, score, median_dist, mse in top_combinations:
         print(f"Combination: {comb}, Score: {score}, Median Distance: {median_dist}, mse: {mse}")
-    
+
     return separability_scores
 
 def search_combination(separability_scores, combination):

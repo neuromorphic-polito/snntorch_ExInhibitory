@@ -3,7 +3,7 @@ FROM pytorch/pytorch:2.0.0-cuda11.7-cudnn8-devel
 RUN apt-get update && \
     apt-get -y upgrade && \
     apt-get install -y \
-    sudo 
+    sudo
 
 ENV TZ=Europe/London
 
@@ -47,18 +47,20 @@ RUN ngrok config add-authtoken $(cat /root/ngrok_token)
 RUN conda init bash
 
 RUN echo "export CUDA_HOME=/usr/local/cuda-11.7" >> /etc/bash.bashrc
- 
+
 ENV CUDA_HOME=/usr/local/cuda-11.7
 
 RUN /opt/conda/bin/python3 -m pip install --upgrade pip
 
+# The important one, specific version of snntorch because they changed the way the rleaky are written
 RUN pip3 install git+https://github.com/jeshraghian/snntorch@40ad1360c644f948889cb9610121397c6ce943c8
 
+# To make nni work
 RUN python3 -m pip install --no-cache-dir nni==2.7 tqdm "typeguard<3" filelock==3.10 jupyterlab notebook ipywidgets seaborn matplotlib scikit-learn tabulate brevitas==0.10.2 tqdm pandas scipy
 
 
-    
 
 
-RUN 
+
+RUN
 WORKDIR /root
