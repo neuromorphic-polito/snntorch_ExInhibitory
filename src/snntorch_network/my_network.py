@@ -73,19 +73,23 @@ class ExInbitoryNetwork(nn.Module):
         The initial value of the vth and beta of the encoding block are
         generated using a gaussian distribution.
 
+        The quantization during training is important only for the constraints.
+        Brevitas actually trains in float, but considers the bit number
+        constraints.
+
 
         Block structure
-              +-----------+     +-----------+    +-----------+              +-----------+          +-----------+     +-----------+
-        +--+  |           |     |           |    |           |  +--+        |           |          |           |     |           |    +--+
-        |i |->|  In_Dense |---->|  In_LIF   |--->|  In_Dense |--| -|------->|  F_LIF    |-------+->| Out_Dense |---->|  O_LIF    |--->|o |
-        +--+  |           |     |           |    |           |  +--+        |           |       |  |           |     |           |    +--+
-              +-----------+     +-----------+    +-----------+    A         +-----------+       |  +-----------+     +-----------+
-                                                                  |                             |
-                                                                  |  +------+ +------+ +------+ |
-                                                                  |  |      | |      | |      | |
-                                                                  +--|Dense |<| ILIF |<|Dense |<+
-                                                                     |      | |      | |      |
-                                                                     +------+ +------+ +------+
+              +-----------+     +-----------+    +------------+              +-----------+          +-----------+     +-----------+
+        +--+  |           |     |           |    |            |  +--+        |           |          |           |     |           |    +--+
+        |i |->|  In_Dense |---->|  In_LIF   |--->| In-R_Dense |--| -|------->|  F_LIF    |-------+->| Out_Dense |---->|  O_LIF    |--->|o |
+        +--+  |           |     |           |    |            |  +--+        |           |       |  |           |     |           |    +--+
+              +-----------+     +-----------+    +------------+   A          +-----------+       |  +-----------+     +-----------+
+                                                                  |                              |
+                                                                  |   +------+ +------+ +------+ |
+                                                                  |   |      | |      | |      | |
+                                                                  +---|Dense |<| ILIF |<|Dense |<+
+                                                                      |      | |      | |      |
+                                                                      +------+ +------+ +------+
 
         Parameters
         ----------
@@ -251,6 +255,10 @@ class ExInbitoryNetwork(nn.Module):
                                 state_quant=self.quant)
     def forward(self, data):
         spk_rec = []
+        # In this dataset, we have the "continuous signal" already split into
+        # segments of n time points. As the segments are presented in disorder
+        # we need to reset the hidden states of the neurons in the network
+        # for every segment.
         # utils.reset(self)  # resets hidden states for all LIF neurons in net
 
         if self.encoder:
