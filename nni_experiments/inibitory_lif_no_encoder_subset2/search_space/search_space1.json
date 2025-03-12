@@ -1,0 +1,27 @@
+
+
+{   
+    "batch_size": {"_type": "choice", "_value": [128,256,512,1024]},
+    "slope": {"_type": "quniform", "_value": [5, 50, 5]},
+    "lr": {"_type": "choice", "_value": [ 0.01, 0.005, 0.002, 0.001, 0.0005, 0.0002, 0.0001,  0.00005, 0.00002, 0.00001]},
+    "loss_fn": {"_type": "choice", "_value": ["ce_count_loss"]},
+
+    "net_hidden_1": {"_type": "quniform", "_value": [20, 200, 20]},
+    "net_hidden_2": {"_type": "quniform", "_value": [100, 600, 50]},
+
+
+    "vth_in": {"_type": "quniform", "_value": [0.1, 2, 0.1]},
+    "vth_recurrent": {"_type": "quniform", "_value": [0.1, 2, 0.1]},
+    "vth_out": {"_type": "quniform", "_value": [0.1, 2, 0.1]},
+    "vth_back": {"_type": "quniform", "_value": [0.1, 2, 0.1]},
+
+    "beta_in": {"_type": "quniform", "_value": [0.1, 1, 0.1]},
+    "beta_recurrent": {"_type": "quniform", "_value": [0.1, 1, 0.1]},
+    "beta_back": {"_type": "quniform", "_value": [0.1, 1, 0.1]},
+    "beta_out": {"_type": "quniform", "_value": [0.1, 1, 0.1]},
+
+    "drop_recurrent": {"_type": "quniform", "_value": [0.1, 0.5, 0.05]},
+    "drop_back": {"_type": "quniform", "_value": [0.1, 0.5, 0.05]},
+    "drop_out": {"_type": "quniform", "_value": [0.1, 0.5, 0.05]}
+
+}

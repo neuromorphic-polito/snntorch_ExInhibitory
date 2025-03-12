@@ -14,3 +14,9 @@ notebook/*
 data/*
 !data
 !data/.gitkeep
+build/
+dist/
+*.egg-info/
+trash/*
+!trash/.gitkeep
+environment.yml

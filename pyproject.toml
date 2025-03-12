@@ -16,9 +16,7 @@ dependencies = [
     "pandas>=1.4.0",
     "scipy>=1.8.0",
     # Hyperparameter optimization
-    "nni==2.7",
-    "typeguard<3",
-    "filelock==3.10",
+    "nni==3.0",
     # Jupyter tools
     "jupyterlab",
     "notebook",

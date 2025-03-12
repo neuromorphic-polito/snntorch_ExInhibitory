@@ -341,9 +341,7 @@ def WisdmDf2Np(path,save_path, time_window=2, overlap =0, subset=0):
     # 50% overlap has been used for the whole dataset (subset=0) to compare with baseline results of paper "A deep learning approach for human activities recognition from multimodal sensing devices"
     #overlap  overlapping fraction (FRACTION with respect to unity, NOT PERCENTAGE)
     #subset  use 0 to select all of the 18 activities
-    ##################################################################
-
-    # activities re-ordered according to non-hand, hand general and hand eating subsets
+    ##################################################################  # activities re-ordered according to non-hand, hand general and hand eating subsets
     act_map = {
         'A': 'walking',
         'B': 'jogging',
@@ -435,7 +433,7 @@ def merge_dicts(dict1, dict2)-> dict:
     merged_dict = {}
     for key in dict1.keys():
         merged_dict[key] = [dict1[key], dict2[key]]
-    #print(merged_dict)
+    print(merged_dict)
     return merged_dict
 
 
@@ -591,7 +589,7 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
     query2 = f"""
             SELECT trialjobId, data
             FROM TrialJobEvent
-            WHERE event = 'WAITING'
+            WHERE event = 'RUNNING'
             AND trialjobId IN ({', '.join('?' for _ in score_dict.keys())});
             """
     cursor.execute(query2, list(score_dict.keys()))
@@ -606,7 +604,8 @@ def nni_query(tiral_sqlite_path, show=True) -> dict:
         if trialjob_id not in params_dict:
         # Append the data to the list, maintaining the order by sequence
             params_dict[trialjob_id] = (parameters['parameters'])
-
+    print('params dict', params_dict)
+    print('score dict', score_dict)
     merged_dict = merge_dicts(score_dict, params_dict)
 
     if show == True:
@@ -646,7 +645,7 @@ def show_results(path, experiment_code=None, print_content=False):
                     experimet_best_dict = nni_query(db_path, show=True)
                     if experimet_best_dict is not None and print_content == True:
                         for trial in experimet_best_dict.keys():
-                            loss_trial_path = os.path.join(path, element,'trials', trial, 'Trained/loss.txt')
+                            loss_trial_path = os.path.join(path, element,'environments/local-env/trials/', trial, 'Trained/loss.txt')
                             data = np.loadtxt(loss_trial_path, skiprows=1)
                             plt.figure(figsize=(15, 10))
                             plt.plot(range(len(data[:,0])), data[:,0], label='train')
@@ -654,13 +653,13 @@ def show_results(path, experiment_code=None, print_content=False):
                             plt.legend()
                             plt.title(f'{trial} loss graph')
                             plt.show()
-                            image_path = os.path.join(path, element,'trials', trial, 'Trained/confusion_matrix.png')
+                            image_path = os.path.join(path, element,'environments/local-env/trials', trial, 'Trained/confusion_matrix.png')
                             img = mpimg.imread(image_path)
 
                             # Visualizza l'immagine
                             plt.imshow(img)
                             plt.show()
-                            gif_path = os.path.join(path, element,'trials', trial, 'gifs')
+                            gif_path = os.path.join(path, element,'environments/local-env/trials', trial, 'gifs')
                             if not os.path.exists(gif_path):
                                 print("The gif_path does not exist.")
                             else:
