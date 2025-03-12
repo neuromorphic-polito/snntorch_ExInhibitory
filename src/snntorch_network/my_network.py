@@ -41,7 +41,7 @@ class ExInbitoryNetwork(nn.Module):
                 drop_back: float = 0.0,
                 drop_out: float = 0.0,
 
-                state_quant: False | snntorch.quant = False,
+                state_quant: bool | object = False,
 
                 time_dim: int = 1,
 
@@ -68,7 +68,9 @@ class ExInbitoryNetwork(nn.Module):
 
         The bias is disabled in all the layers to avoid an issue with the
         back layer, that would become saturated in time and result in always
-        firing. TODO: check
+        firing.
+        Also, the bias in Lava / Loihi 2 is added to the voltage, after the
+        current decay has happened.
 
         The initial value of the vth and beta of the encoding block are
         generated using a gaussian distribution.
@@ -110,7 +112,7 @@ class ExInbitoryNetwork(nn.Module):
             classes.
 
         grad : torch.autograd.Function
-            Gradient of the surrogate gradient function.
+            Surrogate gradient function.
 
         vth_in : float
             Threshold of the In_LIF layer.
@@ -237,7 +239,7 @@ class ExInbitoryNetwork(nn.Module):
         self.recurrent = QuantRecurrentBlock(beta_recurrent, beta_back, vth_back, spike_grad=grad, linear_features = num_hidden_2,
                                             init_hidden=False, reset_delay=False, learn_beta=True,
                                             learn_threshold=True, learn_recurrent=True,
-                                            threshold=vth_recurrent, reset_mechanism="zero",
+                                            vth=vth_recurrent, reset_mechanism="zero",
                                             shared_weight_quant=self.linear1.weight_quant,state_quant=self.quant, dropout=drop_back, output=True)
         self.linear3 = qnn.QuantLinear(num_hidden_2, num_outputs, bias=False,
                                                         weight_bit_width=num_bits,
