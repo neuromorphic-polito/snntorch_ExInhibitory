@@ -1,12 +1,18 @@
-import snntorch as snn
-from snntorch._neurons.neurons import _SpikeTensor, _SpikeTorchConv
-import torch.nn as nn
-import brevitas.nn as qnn
-from snntorch.functional import quant
-from brevitas.quant import Int8WeightPerTensorFixedPoint, Int8ActPerTensorFixedPoint
+"""RLeaky snntroch recurrent block extended with an inhibitory recurrent
+connection with a neuron population"""
 import torch
+import torch.nn as nn
+
+import snntorch as snn
+from snntorch.functional import quant
+
+import brevitas.nn as qnn
+from brevitas.quant import Int8WeightPerTensorFixedPoint, Int8ActPerTensorFixedPoint
+
 
 class QuantRecurrentBlock(snn.RLeaky):
+    """RLeaky snntroch recurrent block extended with an inhibitory recurrent
+       connection with a neuron population"""
 
     def __init__(
         self,
@@ -130,37 +136,81 @@ class QuantRecurrentBlock(snn.RLeaky):
             dropout=self.dropout)
 
     def _build_state_function_hidden(self, input_):
+        """We are redefining the torch version for the parent (RLeaky).
+
+        The original torch version, in the == 1 condition does the following:
+
+        state_fn = \
+            self._base_state_function_hidden(input_) - \
+            self._base_state_function_hidden(input_) * self.reset
+
+        There are two calls to the _base_state_function_hidden, which
+        apparently does not generate any issues for the RLeaky implementation,
+        as the recurrent connection is only a Dense layer.
+
+        Instead in our case we have a neuron population that updates the state
+        twice for each pass (and maybe also does back propagation twice).
+
+        The main issue is that the neuron updates twice its state, so it is
+        like each input is presented twice.
+        """
         if self.reset_mechanism_val == 0:  # reset by subtraction
             state_fn = (
                 self._base_state_function_hidden(input_)
                 - self.reset * self.threshold
             )
         elif self.reset_mechanism_val == 1:  # reset to zero
-            # print("reset to zero step")
-            # state_fn = self._base_state_function_hidden(
-            #     input_
-            # ) - self.reset * self._base_state_function_hidden(input_)
-            # print("reset to zero step")
-            state_fn = (1.0-self.reset) * self._base_state_function_hidden(input_)
+            state_fn = (1.0 - self.reset) * \
+                self._base_state_function_hidden(input_)
         elif self.reset_mechanism_val == 2:  # no reset, pure integration
             state_fn = self._base_state_function_hidden(input_)
         return state_fn
 
     def _build_state_function(self, input_, spk, mem):
+        """We are redefining the torch version for the parent (RLeaky).
+
+        The original torch version, in the == 1 condition does the following:
+
+        state_fn = \
+            self._base_state_function(input_, spk, mem) -
+            self._base_state_function(input_, spk, mem) * self.reset
+
+        There are two calls to the _base_state_function_hidden, which
+        apparently does not generate any issues for the RLeaky implementation,
+        as the recurrent connection is only a Dense layer.
+
+        Instead in our case we have a neuron population that updates the state
+        twice for each pass (and maybe also does back propagation twice).
+
+        The main issue is that the neuron updates twice its state, so it is
+        like each input is presented twice.
+        """
+
         if self.reset_mechanism_val == 0:  # reset by subtraction
             state_fn = self._base_state_function(
                 input_, spk, mem - self.reset * self.threshold
             )
         elif self.reset_mechanism_val == 1:  # reset to zero
-            # state_fn = self._base_state_function(
-            #     input_, spk, mem
-            # ) - self.reset * self._base_state_function(input_, spk, mem)
-            state_fn = (1.0-self.reset) * self._base_state_function(input_, spk, mem)
+            state_fn = (1.0 - self.reset) * self._base_state_function(
+                input_, spk, mem)
         elif self.reset_mechanism_val == 2:  # no reset, pure integration
             state_fn = self._base_state_function(input_, spk, mem)
 
         return state_fn
+
     def _base_state_function_hidden(self, input_):
+        """We are redefining the torch version for the parent (RLeaky).
+        The original torch version is as follows:
+
+            base_fn = (
+                self.beta.clamp(0, 1) * self.mem
+                + input_
+                + self.recurrent(self.spk)
+            )
+        The original recurrent connection is not inhibitory, as we need it.
+        To change to inhibitory, we simply change the recurrent sign to
+        negative.
+        """
         base_fn = (
             self.beta.clamp(0, 1) * self.mem
             + input_
@@ -169,67 +219,28 @@ class QuantRecurrentBlock(snn.RLeaky):
         return base_fn
 
     def _base_state_function(self, input_, spk, mem):
-        base_fn = self.beta.clamp(0, 1) * mem + input_ - self.recurrent(spk)
+        """We are redefining the torch version for the parent (RLeaky).
+        The original torch version is as follows:
+
+            base_fn = \
+                self.beta.clamp(0, 1) * mem + input_ + self.recurrent(spk)
+
+        The original recurrent connection is not inhibitory, as we need it.
+        To change to inhibitory, we simply change the recurrent sign to
+        negative.
+        """
+
+        base_fn = \
+            self.beta.clamp(0, 1) * mem + input_ - self.recurrent(spk)
         return base_fn
 
     def reset_hidden(self):
+        """We need to add the reset for the recurrent connection, because in
+        the RLeaky implementation there is no neuron in this connection."""
+
         super().reset_hidden()
         self.recurrent.reset_hidden()
 
-    def forward(self, input_, spk=False, mem=False):
-        if hasattr(spk, "init_flag") or hasattr(
-            mem, "init_flag"
-        ):  # only triggered on first-pass
-            spk, mem = _SpikeTorchConv(spk, mem, input_=input_)
-        # init_hidden case
-        elif mem is False and hasattr(self.mem, "init_flag"):
-            self.spk, self.mem = _SpikeTorchConv(
-                self.spk, self.mem, input_=input_
-            )
-        # TO-DO: alternatively, we could do torch.exp(-1 /
-        # self.beta.clamp_min(0)), giving actual time constants instead of
-        # values in [0, 1] as initial beta beta = self.beta.clamp(0, 1)
-
-        if not self.init_hidden:
-            self.reset = self.mem_reset(mem)
-            mem = self._build_state_function(input_, spk, mem)
-
-            if self.state_quant:
-                mem = self.state_quant(mem)
-
-            if self.inhibition:
-                spk = self.fire_inhibition(mem.size(0), mem)  # batch_size
-            else:
-                spk = self.fire(mem)
-
-            if not self.reset_delay:
-                do_reset = spk / self.graded_spikes_factor - self.reset  # avoid double reset
-                if self.reset_mechanism_val == 0:  # reset by subtraction
-                    mem = mem - do_reset * self.threshold
-                elif self.reset_mechanism_val == 1:  # reset to zero
-                    mem = mem - do_reset * mem
-
-            return spk, mem
-
-        # intended for truncated-BPTT where instance variables are hidden
-        # states
-        if self.init_hidden:
-            self._rleaky_forward_cases(spk, mem)
-            self.reset = self.mem_reset(self.mem)
-            self.mem = self._build_state_function_hidden(input_)
-
-            if self.state_quant:
-                self.mem = self.state_quant(self.mem)
-            if self.inhibition:
-                self.spk = self.fire_inhibition(self.mem.size(0), self.mem)
-            else:
-                self.spk = self.fire(self.mem)
-
-
-            if self.output:  # read-out layer returns output+states
-                return self.spk, self.mem
-            else:  # hidden layer e.g., in nn.Sequential, only returns output
-                return self.spk
 
 class QuantInibitoryBlock(nn.Module):
     def __init__(self,
@@ -394,12 +405,16 @@ class QuantInibitoryBlock(nn.Module):
         self.activation.reset_hidden()
 
     def to_npz(self):
+
+        # Weights, float and quantized
         input_dense = self.input_dense.weight.detach().cpu().numpy()
         input_dense_quant = self.input_dense.quant_weight().value.detach().cpu().numpy()
 
+        # Neuron state
         activation_beta = self.activation.beta.data.detach().cpu().numpy()
         activation_vth = self.activation.threshold.data.detach().cpu().numpy()
 
+        # Weights, float and quantized
         output_dense = self.output_dense.weight.detach().cpu().numpy()
         output_dense_quant = self.output_dense.quant_weight().value.detach().cpu().numpy()
 
