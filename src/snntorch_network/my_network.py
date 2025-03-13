@@ -1,53 +1,56 @@
-import torch
-import torch.nn as nn
-import snntorch as snn
-from snntorch.functional import probe
-import brevitas.nn as qnn  # Xilinx library for quantization
-from brevitas.quant import Int8WeightPerTensorFixedPoint
-from snntorch import utils
-from snntorch import surrogate
-import torch.nn.functional as F
-from snntorch import functional as SF
-from snntorch.functional import quant
-from snntorch_network.RecurrentBlock import QuantRecurrentBlock
+
+from typing import Callable
+
 import numpy as np
 
+import torch
+import torch.nn as nn
 
-class ExInbitoryNetwork(nn.Module):
-    def __init__(self,
-                num_inputs: int,
-                num_hidden_1: int,
-                num_hidden_2: int,
-                num_outputs: int,
+import snntorch as snn
+from snntorch.functional import probe
 
-                grad: torch.autograd.Function,
+import brevitas.nn as qnn  # Xilinx library for quantization
+from brevitas.quant import Int8WeightPerTensorFixedPoint
 
-                vth_in: float,
-                vth_recurrent: float,
-                vth_back: float,
-                vth_out: float,
+from snntorch_network.RecurrentBlock import QuantRecurrentBlock
 
-                beta_in: float,
-                beta_recurrent: float,
-                beta_back: float,
-                beta_out: float,
 
-                encoder_dim: int | None = None,
-                vth_enc_value: float = 1.0,
-                vth_std: float = 1000,
-                beta_std: float = 1000,
+class ExInhbitoryNetwork(nn.Module):
+    def __init__(
+            self,
+            num_inputs: int,
+            num_hidden_1: int,
+            num_hidden_2: int,
+            num_outputs: int,
 
-                drop_recurrent: float = 0.0,
-                drop_back: float = 0.0,
-                drop_out: float = 0.0,
+            grad: torch.autograd.Function,
 
-                state_quant: bool | object = False,
+            vth_in: float,
+            vth_recurrent: float,
+            vth_back: float,
+            vth_out: float,
 
-                time_dim: int = 1,
+            beta_in: float,
+            beta_recurrent: float,
+            beta_back: float,
+            beta_out: float,
 
-                num_bits: int = 8,
-                layer_loss: object | None = None,
-                weight_quant : object = Int8WeightPerTensorFixedPoint
+            encoder_dim: int | None = None,
+            vth_enc_value: float = 1.0,
+            vth_std: float = 1000,
+            beta_std: float = 1000,
+
+            drop_recurrent: float = 0.0,
+            drop_back: float = 0.0,
+            drop_out: float = 0.0,
+
+            state_quant: bool | object = False,
+
+            time_dim: int = 1,
+
+            num_bits: int = 8,
+            layer_loss: Callable | None = None,
+            weight_quant: object = Int8WeightPerTensorFixedPoint
                 ):
 
         """
@@ -78,6 +81,10 @@ class ExInbitoryNetwork(nn.Module):
         The quantization during training is important only for the constraints.
         Brevitas actually trains in float, but considers the bit number
         constraints.
+
+        With the Brevitas library, we can configure the quantization blocks
+        to share the quantization range. Otherwise, each block will have an
+        independent range which is not advised (see tutorials).
 
 
         Block structure
@@ -144,8 +151,8 @@ class ExInbitoryNetwork(nn.Module):
 
         vth_enc_value : float
             Maximum value to be used in the gaussian distribution that
-            calculates the initialization value of the vth of the
-            encoding block.
+            calculates the initialization values of the vths of the
+            encoding block, as we are using one vth for each neuron.
 
         vth_std : float
             Standard deviation of the gaussian distribution that calculates
@@ -153,7 +160,8 @@ class ExInbitoryNetwork(nn.Module):
 
         beta_std : float
             Standard deviation of the gaussian distribution that calculates
-            the initialization value of the beta of the encoding block.
+            the initialization values of the betas of the encoding block,
+            as we are using one beta for each neuron.
             Beta value is 1.
 
         drop_recurrent : float
@@ -176,8 +184,10 @@ class ExInbitoryNetwork(nn.Module):
             Number of bits to be used in the quantization of the weights.
 
         layer_loss : object | None
-            Loss function to be used in the training. If None, no loss is
-            used.
+            Additional loss function to be used in the training. This loss
+            function looks at the spike trains, except in the recurrent branch.
+            Here it is used for activation sparsity. If None, no additional
+            loss is used
 
         weight_quant : object
             Function to be used for the quantization of the weights. To be
@@ -185,103 +195,175 @@ class ExInbitoryNetwork(nn.Module):
 
         """
 
-        super(ExInbitoryNetwork, self).__init__()
-        self.layer_loss = layer_loss
+        super(ExInhbitoryNetwork, self).__init__()
 
-        self.time_dim = time_dim
+        self.layer_loss: Callable | None = layer_loss
 
-        self.quant = state_quant
+        self.time_dim: int = time_dim
+
+        self.quant: bool | object = state_quant
 
         if encoder_dim is not None:
             # Create a gaussian distribution for the vth and beta, to cover
-            # the full range of the encoder_dim
+            # the full range of the encoder_dim.
+
+            # Each neuron will receive a different value, according to the
+            # value they "sample" in the gaussian distribution. This "sampling"
+            # is done ordered.
+
+            # This encoder is not actually being used. Instead, the next neuron
+            # population is considered to be the encoder.
 
             self.encoder = True
-            vth_e = self.gen_gaussian_distribution(encoder_dim, encoder_dim/2, vth_std, vth_enc_value)
-            beta_e = self.gen_gaussian_distribution(encoder_dim, encoder_dim/2, beta_std)
+            vth_e = self.gen_gaussian_distribution(
+                encoder_dim,
+                encoder_dim/2,
+                vth_std,
+                vth_enc_value)
+            beta_e = self.gen_gaussian_distribution(
+                encoder_dim,
+                encoder_dim/2,
+                beta_std)
 
-            self.encoder_connection = qnn.QuantLinear(num_inputs, encoder_dim, bias=False,
-                                            weight_bit_width=num_bits)
-            #self.encoder_connection = nn.Linear(num_inputs, encoder_dim, bias=False)
+            self.encoder_connection = qnn.QuantLinear(
+                num_inputs,
+                encoder_dim,
+                bias=False,
+                weight_bit_width=num_bits
+                )
 
-            self.encoder_population = snn.Leaky(beta=beta_e,
-                                    spike_grad=grad,
-                                    threshold= vth_e,
-                                    learn_threshold=True,
-                                    learn_beta=True,
-                                    reset_mechanism='zero',
-                                    reset_delay=False)
+            self.encoder_population = snn.Leaky(
+                beta=beta_e,
+                spike_grad=grad,
+                threshold=vth_e,
+                learn_threshold=True,
+                learn_beta=True,
+                reset_mechanism='zero',
+                reset_delay=False
+                )
 
-            self.linear1 = qnn.QuantLinear(encoder_dim, num_hidden_1, bias=False,
-                                       weight_bit_width=num_bits)
+            self.linear1 = qnn.QuantLinear(
+                encoder_dim,
+                num_hidden_1,
+                bias=False,
+                weight_bit_width=num_bits)
         else:
+            # The "encoder" in the thesis.
+            # No gaussian distribution used for initialization.
+            # Just single value used
             self.encoder = False
-            self.linear1 = qnn.QuantLinear(num_inputs, num_hidden_1, bias=False,
-                                           weight_bit_width=num_bits, weight_quant=weight_quant)
+            self.linear1 = qnn.QuantLinear(
+                num_inputs,
+                num_hidden_1,
+                bias=False,
+                weight_bit_width=num_bits,
+                weight_quant=weight_quant
+                )
 
+        # Input neuron population
+        self.leaky1 = snn.Leaky(
+            beta=beta_in,
+            spike_grad=grad,
+            threshold=vth_in,
+            learn_threshold=True,
+            learn_beta=True,
+            reset_mechanism='zero',
+            reset_delay=False,
+            state_quant=self.quant
+            )
 
+        self.linear2 = qnn.QuantLinear(
+            num_hidden_1,
+            num_hidden_2,
+            bias=False,
+            weight_bit_width=num_bits,
+            weight_quant=self.linear1.weight_quant  # To share quant range
+            )
 
-        self.leaky1 = snn.Leaky(beta=beta_in,
-                                spike_grad=grad,
-                                threshold= vth_in,
-                                learn_threshold=True,
-                                learn_beta=True,
-                                reset_mechanism='zero',
-                                reset_delay=False,
-                                state_quant=self.quant)
-
-        self.linear2 = qnn.QuantLinear(num_hidden_1, num_hidden_2, bias=False,
-                                        weight_bit_width=num_bits,
-                                        weight_quant=  self.linear1.weight_quant)
-        print(f"type of self.linear2 is {type(self.linear2)}")
         self.dropout_rec = nn.Dropout(p=drop_recurrent)
 
-        self.recurrent = QuantRecurrentBlock(beta_recurrent, beta_back, vth_back, spike_grad=grad, linear_features = num_hidden_2,
-                                            init_hidden=False, reset_delay=False, learn_beta=True,
-                                            learn_threshold=True, learn_recurrent=True,
-                                            vth=vth_recurrent, reset_mechanism="zero",
-                                            shared_weight_quant=self.linear1.weight_quant,state_quant=self.quant, dropout=drop_back, output=True)
-        self.linear3 = qnn.QuantLinear(num_hidden_2, num_outputs, bias=False,
-                                                        weight_bit_width=num_bits,
-                                                        weight_quant=  self.linear1.weight_quant)
+        self.recurrent = QuantRecurrentBlock(
+
+            # Parameters for the ILIF class
+            back_beta=beta_back,
+            back_vth=vth_back,
+
+            # Parameters for the RLeaky class
+            beta=beta_recurrent,
+            linear_features=num_hidden_2,
+            vth=vth_recurrent,
+            spike_grad=grad,
+            init_hidden=False,
+            learn_beta=True,
+            learn_threshold=True,
+            learn_recurrent=True,
+            reset_mechanism="zero",
+            state_quant=self.quant,
+            output=True,
+            reset_delay=False,
+
+            # Default parameters for the ILIF class
+            dropout=drop_back,
+
+            # Other parameters
+            # To share quant range
+            shared_weight_quant=self.linear1.weight_quant,
+            )
+
+        # Before the output population
+        self.linear3 = qnn.QuantLinear(
+            num_hidden_2,
+            num_outputs,
+            bias=False,
+            weight_bit_width=num_bits,
+            weight_quant=self.linear1.weight_quant  # To share quant range
+            )
+
         self.dropout_out = nn.Dropout(p=drop_out)
 
-        self.leaky2 = snn.Leaky(beta=beta_out,
-                                spike_grad=grad,
-                                threshold= vth_out,
-                                learn_threshold=True,
-                                learn_beta=True,
-                                reset_mechanism='zero',
-                                reset_delay=False,
-                                output=True,
-                                state_quant=self.quant)
+        self.leaky2 = snn.Leaky(
+            beta=beta_out,
+            spike_grad=grad,
+            threshold=vth_out,
+            learn_threshold=True,
+            learn_beta=True,
+            reset_mechanism='zero',
+            reset_delay=False,
+            output=True,
+            state_quant=self.quant
+            )
+
     def forward(self, data):
+
+        # To save the output spikes from all the runs
         spk_rec = []
+
         # In this dataset, we have the "continuous signal" already split into
         # segments of n time points. As the segments are presented in disorder
         # we need to reset the hidden states of the neurons in the network
         # for every segment.
         # utils.reset(self)  # resets hidden states for all LIF neurons in net
-
         if self.encoder:
             self.encoder_population.reset_hidden()
 
         self.leaky1.reset_hidden()
         self.recurrent.reset_hidden()
         self.leaky2.reset_hidden()
+
+        # Call snntorch rleaky init function
         rspk, rmem = self.recurrent.init_rleaky()
 
+        # If the dimension in which time is present is given
         if self.time_dim is not None:
-            dims = list(range(data.dim()))  # Creates a list of dimensions
-            #print(dims)
-            dims.pop(self.time_dim)                     # Remove the selected dimension
-            dims.insert(0, self.time_dim)               # Insert the selected dimension at the front
+            dims = list(range(data.dim()))           # Creates a list of dimensions
+            dims.pop(self.time_dim)                  # Remove the selected dimension
+            dims.insert(0, self.time_dim)            # Insert the selected dimension at the front
             data_permuted = data.permute(dims)  # Permute the tensor
         else:
             data_permuted = data
 
+        # Init accumulators for the additional loss function
         if self.layer_loss is not None:
-
             if self.encoder:
                 layer1_acc = []
                 layer2_acc = []
@@ -289,16 +371,16 @@ class ExInbitoryNetwork(nn.Module):
             else:
                 layer1_acc = []
                 layer2_acc = []
-        i = 0
+
+        # Start the forward passes
         for slice in data_permuted:
             if self.encoder:
 
-                x = self.encoder_connection(slice)
+                x: torch.Tensor = self.encoder_connection(slice)
                 x, _ = self.encoder_population(x)
 
                 if self.layer_loss is not None:
                     encoder_acc.append(x.clone().cpu())
-
 
                 x = self.linear1(x)
                 x, _ = self.leaky1(x)
@@ -313,10 +395,12 @@ class ExInbitoryNetwork(nn.Module):
                 if self.layer_loss is not None:
                     layer1_acc.append(x.clone().cpu())
 
-
             x = self.linear2(x)
             x = self.dropout_rec(x)
 
+            # For rspk and rmem, we are just given it the values of the
+            # previous pass For the first pass, we get the values from
+            # init_rleaky()
             rspk, rmem = self.recurrent(x, rspk, rmem)
 
             if self.layer_loss is not None:
@@ -328,14 +412,21 @@ class ExInbitoryNetwork(nn.Module):
             x, _ = self.leaky2(x)
 
             spk_rec.append(x)
+
         batch_out = torch.stack(spk_rec)
 
+        # Calculate the additional loss if applicable, and returns it
         if self.layer_loss is not None:
             if self.encoder:
-                net_loss = self.layer_loss([torch.stack(layer1_acc), torch.stack(layer2_acc), torch.stack(encoder_acc)])
+                net_loss = self.layer_loss([
+                    torch.stack(layer1_acc),
+                    torch.stack(layer2_acc),
+                    torch.stack(encoder_acc)
+                    ])
                 del encoder_acc
             else:
-                net_loss = self.layer_loss([torch.stack(layer1_acc), torch.stack(layer2_acc)])
+                net_loss = self.layer_loss(
+                    [torch.stack(layer1_acc), torch.stack(layer2_acc)])
 
             del layer1_acc
             del layer2_acc
@@ -355,7 +446,7 @@ class ExInbitoryNetwork(nn.Module):
         self.spk_monitor.disable()
         self.mem_monitor.disable()
 
-    def  debug_start(self):
+    def  debug_start(self) -> None:
         self.spk_monitor.enable()
         self.mem_monitor.enable()
 
@@ -369,10 +460,17 @@ class ExInbitoryNetwork(nn.Module):
 
 
     @staticmethod
-    def gen_gaussian_distribution( len, mean, std, max=1.0):
+    def gen_gaussian_distribution(len, mean, std, max=1.0):
+        """Generate a gaussian distribution.
 
-        #extend the binning in oder to create
-        # the full gaussian and then cut the final part that goes to zeros
+        The range is extended, so that no neurons get zero values.
+
+        Parameters
+        ----------
+
+        mean: float
+            The central point of the distribution
+        """
         bin = round(len*1.40)
         mean = round(mean*1.40)
         offset = round((bin - len)/2)

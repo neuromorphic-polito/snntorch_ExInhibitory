@@ -58,16 +58,16 @@ def main():
     grad = surrogate.fast_sigmoid(params['slope']) #use slope for HPO
 
     net_loss = regularization_loss(0.1, 0.03, 40)
-    
-    net = ExInbitoryNetwork(NET_INPUT_DIM, int(params['net_hidden_1']), int(params['net_hidden_2']), NET_OUTPUT_DIM, grad,
+
+    net = ExInhbitoryNetwork(NET_INPUT_DIM, int(params['net_hidden_1']), int(params['net_hidden_2']), NET_OUTPUT_DIM, grad,
                         vth_in=params['vth_in'], vth_recurrent=params['vth_recurrent'], vth_out=params['vth_out'], vth_back=params['vth_back'],
                         beta_in=params['beta_in'], beta_recurrent=params['beta_recurrent'], beta_back=params['beta_back'], beta_out=params['beta_out'],
                         drop_recurrent=params['drop_recurrent'], drop_back=params['drop_back'], drop_out=params['drop_out'], time_dim=2, layer_loss=net_loss).to(device)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=params['lr'], betas=(0.9, 0.999))
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 
-        T_max=4690, 
-        eta_min=0, 
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
+        T_max=4690,
+        eta_min=0,
         last_epoch=-1
     )
     if params['loss_fn'] == 'mse_count_loss':
@@ -89,7 +89,7 @@ def main():
             tqdm_dataloader = tqdm(train_loader)
             for _, batch in enumerate(tqdm_dataloader): # training loop
                 input, label = batch
-                
+
                 output = assistant.train(input, label)
                 tqdm_dataloader.set_description(f'\r[Epoch {epoch:2d}/{NUM_EPOCHS}] Training: {stats.training}')
 
@@ -98,7 +98,7 @@ def main():
                 input, label = batch
                 output = assistant.valid(input, label)
                 tqdm_dataloader.set_description(f'\r[Epoch {epoch:2d}/{NUM_EPOCHS}] Validation: {stats.validation}')
-            
+
                 if len(outputs) == 0:
                     outputs = output.to('cpu').detach()
                     labels = label.to('cpu').detach()
@@ -119,7 +119,7 @@ def main():
 
             del outputs
             del labels
-            
+
             torch.cuda.empty_cache()
     stats.plot(figsize=(15, 5),path=f'./{trained_folder}/')
     stats.save( f'./{trained_folder}/')

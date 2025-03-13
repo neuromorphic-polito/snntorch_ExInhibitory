@@ -21,7 +21,6 @@ class QuantRecurrentBlock(snn.RLeaky):
         back_beta: float,
         back_vth: float,
 
-
         # Parameters for the RLeaky class
         beta: float,
         linear_features=None,
