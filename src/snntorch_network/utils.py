@@ -74,6 +74,12 @@ def calculate_separability_score(combination, distance_matrix):
 
 def calculate_distance_matrix(data, labels, num_classes, epsilon=1e-10, show_matrix=False, save_matrix_name=None):
 
+    """Use kullback-leibler (kl) distance to calculate the distance between the
+    classes
+    The KL distance is calculated for each pair of KDE.
+    There is one KDE for each class.
+    """
+
     kdes = {cls: [] for cls in range(num_classes)}
 
     print("Calculating KDEs for each class...")

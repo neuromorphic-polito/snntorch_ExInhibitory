@@ -1,3 +1,6 @@
+"""Inspired by Lava-dl library. Helper stuff to keep track of stats like
+loss and accuracy during training, validation and testing."""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -137,7 +140,7 @@ class LearningStats:
                  loss_unit='',
                  accuracy_str='accuracy',
                  accuracy_unit=''):
-        
+
         self.lines_printed = 0
         self.training = LearningStat()
         self.testing = LearningStat()
@@ -260,25 +263,25 @@ class LearningStats:
         if self.training.valid_loss_log:
             loss_plot_exists = figure_init(figures[0])
             plt.semilogy(self.training.loss_log, label='Training')
-        
+
         if self.validation.valid_loss_log:
             if loss_plot_exists is False:
                 loss_plot_exists = figure_init(figures[0])
             plt.semilogy(self.validation.loss_log, label='Validation')
-        
+
         if self.testing.valid_loss_log:
             if loss_plot_exists is False:
                 loss_plot_exists = figure_init(figures[0])
             plt.semilogy(self.testing.loss_log, label='Testing')
         loss_ylabel = self.training.loss_str.capitalize()
-        
+
         if self.training.loss_unit != '':
             loss_ylabel += f' {self.training.loss_unit}'
-        
+
         plt.xlabel('Epoch')
         plt.ylabel(loss_ylabel)
         plt.legend()
-        
+
         if path is not None:
             plt.savefig(path + 'loss.png')
 
@@ -287,30 +290,30 @@ class LearningStats:
                 self.testing.valid_accuracy_log is False:
             return
         acc_plot_exists = False
-        
+
         if self.training.valid_accuracy_log:
             acc_plot_exists = figure_init(figures[1])
             plt.plot(self.training.accuracy_log, label=f'Training, max accuracy = {self.training.max_accuracy:.5f}')
-        
+
         if self.validation.valid_accuracy_log:
             if acc_plot_exists is False:
                 acc_plot_exists = figure_init(figures[1])
             plt.plot(self.validation.accuracy_log, label=f'Validation, max accuracy = {self.validation.max_accuracy:.5f}')
-        
+
         if self.testing.valid_accuracy_log:
             if acc_plot_exists is False:
                 acc_plot_exists = figure_init(figures[1])
             plt.plot(self.testing.accuracy_log, label=f'Testing, max accuracy = {self.testing.max_accuracy:.5f}')
-        
+
         accuracy_ylabel = self.training.accuracy_str.capitalize()
-        
+
         if self.training.accuracy_unit != '':
             accuracy_ylabel += f' {self.training.accuracy_unit}'
-        
+
         plt.xlabel('Epoch')
         plt.ylabel(accuracy_ylabel)
         plt.legend()
-        
+
         if path is not None:
             plt.savefig(path + 'accuracy.png')
 
@@ -325,7 +328,7 @@ class LearningStats:
         """
         with open(path + self.training.loss_str + '.txt', 'wt') as loss:
             header = ''
-            
+
             if self.training.valid_loss_log:
                 header += ' Train       '
             if self.validation.valid_loss_log:
@@ -349,7 +352,7 @@ class LearningStats:
             self.validation.valid_accuracy_log is False and \
                 self.testing.valid_accuracy_log is False:
             return
-        
+
         with open(path + self.testing.accuracy_str + '.txt', 'wt') as accuracy:
             header = ''
             if self.training.valid_loss_log:

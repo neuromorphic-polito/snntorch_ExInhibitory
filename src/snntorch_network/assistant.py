@@ -1,3 +1,6 @@
+"""Inspired by lava-dl library."""
+
+
 import torch
 
 
@@ -121,11 +124,11 @@ class Assistant:
 
         if self.lam is not None:  # add net_loss before backward step
             loss += self.lam * net_loss
-        
+
         if self.stats is not None:
             self.stats.training.num_samples += input.shape[0]
             self.stats.training.loss_sum += loss.cpu().data.item() * input.shape[0]
-            
+
             if self.classifier:   # classification
                 _, idx = output.sum(dim=0).max(1)
                 self.stats.training.correct_samples += torch.sum(
@@ -188,14 +191,14 @@ class Assistant:
 
             loss = self.loss(output, target)
 
-            if self.lam is not None:  
+            if self.lam is not None:
                 loss += self.lam * net_loss
-            
+
             if self.stats is not None:
-                
+
                 self.stats.testing.num_samples += input.shape[0]
                 self.stats.testing.loss_sum += loss.cpu().data.item() * input.shape[0]
-                
+
                 if self.classifier:   # classification
                     _, idx = output.sum(dim=0).max(1)
                     self.stats.testing.correct_samples += torch.sum(
@@ -226,13 +229,13 @@ class Assistant:
 
         """
         self.net.eval()
-        
+
         if self.device is None:
             for p in self.net.parameters():
                 self.device = p.device
                 break
         device = self.device
-        
+
         with torch.no_grad():
             input = input.to(device)
             target = target.to(device)
@@ -250,15 +253,15 @@ class Assistant:
                     output, net_loss = self.net(input)
 
             loss = self.loss(output, target)
-            
-            if self.lam is not None:  
+
+            if self.lam is not None:
                 loss += self.lam * net_loss
-            
+
             if self.stats is not None:
-                
+
                 self.stats.validation.num_samples += input.shape[0]
                 self.stats.validation.loss_sum += loss.cpu().data.item() * input.shape[0]
-                
+
                 if self.classifier:   # classification
                     _, idx = output.sum(dim=0).max(1)
                     self.stats.validation.correct_samples += torch.sum(

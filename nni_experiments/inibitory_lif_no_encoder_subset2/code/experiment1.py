@@ -1,3 +1,6 @@
+"""Python script for training with nni. This file is not called with python.
+Instead we use nnictl and the yml configuration file."""
+
 import argparse
 import os, sys
 from pathlib import Path
@@ -19,11 +22,17 @@ from snntorch_network.utils import *
 from snntorch_network.my_network import *
 from snntorch_network.assistant import Assistant
 from snntorch_network.stats import LearningStats
+
+
 def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--trial_path', type=str, help='nome del config file per creare la cartella adeguata')
     args = parser.parse_args()
+
+    # nni will get the parameters from the file that has been indicated
+    # in searchSpaceFile in the config.yml file. In this case,
+    # search_space1.json
 
     params = nni.get_next_parameter()
 
@@ -65,16 +74,21 @@ def main():
                         drop_recurrent=params['drop_recurrent'], drop_back=params['drop_back'], drop_out=params['drop_out'], time_dim=2, layer_loss=net_loss).to(device)
 
     optimizer = torch.optim.Adam(net.parameters(), lr=params['lr'], betas=(0.9, 0.999))
+
+    # learning rate scheduler
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,
         T_max=4690,
         eta_min=0,
         last_epoch=-1
     )
+
+    # Currently only using cross-entropy
     if params['loss_fn'] == 'mse_count_loss':
         loss_fn = SF.loss.mse_count_loss(correct_rate=0.8, incorrect_rate=0.2) #param loss for HPO
     elif params['loss_fn'] == 'ce_count_loss':
         loss_fn = SF.loss.ce_count_loss()
 
+    # The stuff to make things easier (inspired by lava-dl)
     stats = LearningStats()
     assistant = Assistant(net, loss_fn, optimizer, stats, classifier=True, scheduler=scheduler, lam=1.0)
 
@@ -84,13 +98,17 @@ def main():
         outputs = []
         # if epoch % 20 == 0:
         #     assistant.reduce_lr()
+
+
+        # if for PATINCE epochs the accuracy does not improve, finish the
+        # training. (The remaining epochs will not do anything)
         if count < PATIENCE:
             count = count+1
             tqdm_dataloader = tqdm(train_loader)
             for _, batch in enumerate(tqdm_dataloader): # training loop
                 input, label = batch
 
-                output = assistant.train(input, label)
+                assistant.train(input, label)
                 tqdm_dataloader.set_description(f'\r[Epoch {epoch:2d}/{NUM_EPOCHS}] Training: {stats.training}')
 
             tqdm_dataloader = tqdm(val_loader)
@@ -99,6 +117,7 @@ def main():
                 output = assistant.valid(input, label)
                 tqdm_dataloader.set_description(f'\r[Epoch {epoch:2d}/{NUM_EPOCHS}] Validation: {stats.validation}')
 
+                # Concatenate all validation outputs
                 if len(outputs) == 0:
                     outputs = output.to('cpu').detach()
                     labels = label.to('cpu').detach()
@@ -106,14 +125,22 @@ def main():
                     outputs = torch.cat((outputs, output.to('cpu').detach()), dim=1)
                     labels = torch.cat((labels, label.to('cpu').detach()))
 
+            # Log intermediate results to nni, for logging, plots, etc.
             nni.report_intermediate_result(stats.validation.accuracy*100)
 
             stats.update()
 
+            # this is true if the current is the best
             if stats.validation.best_accuracy:
                 count = 0
+
+                # We get the prediction as the class that has produced more
+                # spikes during the simulation. So we sum all the spikes, and
+                # get the class with the max sum.
                 _, predictions = outputs.sum(dim=0).max(1)
                 gen_confusion_matrix(predictions,labels, f'./{trained_folder}/')
+
+                # Save the currently best network.
                 net.save_to_npz(f'./{trained_folder}/network_best.npz')
                 del predictions
 
@@ -121,8 +148,16 @@ def main():
             del labels
 
             torch.cuda.empty_cache()
+
+    # Plot of loss and accuracy of all the epochs, for training and val
     stats.plot(figsize=(15, 5),path=f'./{trained_folder}/')
+
+    # Save .txt with loss and accuracy of all the epochs, for training and val
     stats.save( f'./{trained_folder}/')
+
+    # Report the final result, which is the with the best accuracy
+    # So nni can understand the results of this configuration, and use it
+    # to find the next one to try.
     nni.report_final_result(stats.validation.max_accuracy*100)
 
 

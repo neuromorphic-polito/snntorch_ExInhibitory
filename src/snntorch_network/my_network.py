@@ -435,29 +435,6 @@ class ExInhbitoryNetwork(nn.Module):
         else:
             return batch_out
 
-    def debug_init(self):
-
-        self.spk_monitor = probe.OutputMonitor(self, instance = (snn.Leaky, snn.RLeaky))
-        self.mem_monitor = probe.AttributeMonitor('mem', False, self, instance = (snn.Leaky))
-        self.spk_monitor.enable()
-        self.mem_monitor.enable()
-
-    def debug_pause(self):
-        self.spk_monitor.disable()
-        self.mem_monitor.disable()
-
-    def  debug_start(self) -> None:
-        self.spk_monitor.enable()
-        self.mem_monitor.enable()
-
-    def clear_monitor(self):
-        self.spk_monitor.clear_recorded_data()
-        self.mem_monitor.clear_recorded_data()
-
-    def get_monitor_results(self):
-        return self.spk_monitor, self.mem_monitor
-
-
 
     @staticmethod
     def gen_gaussian_distribution(len, mean, std, max=1.0):
