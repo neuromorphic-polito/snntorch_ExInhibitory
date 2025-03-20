@@ -1,5 +1,16 @@
 # snntorch_network
 
+## Install
+
+To install, create a conda environment with python 3.10.
+
+Then install the pyproject in editable mode with
+
+```
+pip install -e .
+```
+
+This will install the required `snntorch` version which in turn will install pytorch for cpu and gpu. If you want only cpu version, install first pytorch as indicated in their website.
 
 ## Dataset analysis
 
