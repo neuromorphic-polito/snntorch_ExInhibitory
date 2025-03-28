@@ -66,7 +66,7 @@ def main():
 
     grad = surrogate.fast_sigmoid(params['slope']) #use slope for HPO
 
-    net_loss = regularization_loss(0.1, 0.03, 40)
+    net_loss = regularization_loss(0.1, 0.03, 40, device=device)
 
     net = ExInhbitoryNetwork(NET_INPUT_DIM, int(params['net_hidden_1']), int(params['net_hidden_2']), NET_OUTPUT_DIM, grad,
                         vth_in=params['vth_in'], vth_recurrent=params['vth_recurrent'], vth_out=params['vth_out'], vth_back=params['vth_back'],
